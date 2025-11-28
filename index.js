@@ -4,58 +4,53 @@ import axios from "axios";
 const app = express();
 app.use(express.json());
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const TOKEN = process.env.TELEGRAM_TOKEN;
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
-app.post("/webhook", async (req, res) => {
-    try {
-        const update = req.body;
+// Проверка что всё загружено
+if (!TOKEN) console.error("❌ TELEGRAM_TOKEN отсутствует!");
+if (!OPENAI_KEY) console.error("❌ OPENAI_API_KEY отсутствует!");
 
-        // Если нет сообщения — игнорируем
-        if (!update.message || !update.message.text) {
-            return res.sendStatus(200);
+// Главный Webhook
+app.post(`/webhook/${TOKEN}`, async (req, res) => {
+  try {
+    const chatId = req.body.message.chat.id;
+    const userText = req.body.message.text;
+
+    // Запрос в OpenAI
+    const aiResponse = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Ты умный ассистент Эльшана." },
+          { role: "user", content: userText }
+        ]
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${OPENAI_KEY}`,
+          "Content-Type": "application/json"
         }
+      }
+    );
 
-        const chatId = update.message.chat.id;
-        const userText = update.message.text;
+    const reply = aiResponse.data.choices[0].message.content;
 
-        // Запрос к OpenAI
-        const aiResponse = await axios.post(
-            "https://api.openai.com/v1/chat/completions",
-            {
-                model: "gpt-4o-mini",
-                messages: [
-                    { role: "system", content: "Ты умный ассистент Эльшана." },
-                    { role: "user", content: userText }
-                ]
-            },
-            {
-                headers: {
-                    "Authorization": `Bearer ${OPENAI_API_KEY}`,
-                    "Content-Type": "application/json",
-                }
-            }
-        );
+    // Ответ в Telegram
+    await axios.post(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: reply
+    });
 
-        const reply = aiResponse.data.choices[0].message.content;
-
-        // Отправка сообщения в Telegram
-        await axios.post(
-            `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
-            {
-                chat_id: chatId,
-                text: reply
-            }
-        );
-
-        return res.sendStatus(200);
-    } catch (err) {
-        console.error("BOT ERROR:", err.response?.data || err.message);
-        return res.sendStatus(500);
-    }
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("BOT ERROR:", err.response?.data || err.message);
+    return res.sendStatus(500);
+  }
 });
 
-// Render port
-app.listen(process.env.PORT || 10000, () => {
-    console.log("BOT SERVER RUNNING");
+// порт для Render
+app.listen(10000, () => {
+  console.log("BOT SERVER RUNNING");
 });
